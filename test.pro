@@ -4,8 +4,8 @@ CONFIG += ordered
 
 SUBDIRS += \
     protocol \
-    server
-#    client
+    server \
+    client
 
 server.depends = protocol
 client.depends = protocol
