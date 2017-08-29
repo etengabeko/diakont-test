@@ -5,9 +5,9 @@ import socket
 from time import sleep
 
 def main(args):
-    kSubscribe = 1
-    kUnsubscribe = 2
-    kPing = 3
+    kSubscribe =   '\x00\x00\x00\x03\x01\x00\x00'
+    kUnsubscribe = '\x00\x00\x00\x03\x02\x00\x00'
+    kPing =        '\x00\x00\x00\x03\x03\x00\x00'
 
     sock = None
     try:
@@ -34,9 +34,9 @@ def main(args):
 #                if not data:
 #                    break
                 if count == 0:
-                    sock.send(bytes(bytearray([kSubscribe])))
+                    sock.send(kSubscribe)
                 else:
-                    sock.send(bytes(bytearray([kPing])))
+                    sock.send(kPing)
                 count += 1
                 sleep(1)
             except socket.error as e:
@@ -47,7 +47,7 @@ def main(args):
         print("Cancel...")
     finally:
         if sock:
-            sock.send(bytes(bytearray([kUnsubscribe])))
+            sock.send(kUnsubscribe)
             sock.close()
             print("Disconnected")
 
