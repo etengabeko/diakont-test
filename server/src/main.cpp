@@ -51,10 +51,10 @@ int main(int argc, char *argv[])
     int port = serverOptions.port();
 
     std::unique_ptr<Netcom::Server> server = Netcom::Server::createServer(protocol,
-                                                                          (address == "localhost" ? QHostAddress(QHostAddress::LocalHost)
-                                                                                                  : (address == "@" ? QHostAddress::Any
-                                                                                                                    : QHostAddress(address))),
-                                                                          port);
+                                                                          Netcom::NetworkAddress(address == "localhost" ? QHostAddress(QHostAddress::LocalHost)
+                                                                                                                        : (address == "@" ? QHostAddress::Any
+                                                                                                                                          : QHostAddress(address)),
+                                                                                                 port));
     if (   server != nullptr
         && server->start())
     {
