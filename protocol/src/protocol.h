@@ -28,6 +28,9 @@ public:
     Type type() const;
     void setType(Type type);
 
+    QByteArray body() const;
+    void setBody(const QByteArray& body);
+
     QByteArray serialize() const;
     static Message parse(const QByteArray& raw, bool* ok = nullptr);
 

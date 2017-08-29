@@ -21,6 +21,16 @@ void Message::setType(Type type)
     m_type = type;
 }
 
+QByteArray Message::body() const
+{
+    return m_body;
+}
+
+void Message::setBody(const QByteArray& body)
+{
+    m_body = body;
+}
+
 QByteArray Message::serialize() const
 {
     // TODO
@@ -29,6 +39,8 @@ QByteArray Message::serialize() const
     {
         QDataStream output(&result, QIODevice::WriteOnly);
         output << static_cast<quint8>(m_type);
+        output << static_cast<quint16>(m_body.size());
+        output.writeRawData(m_body.data(), m_body.size());
     }
 
     return result;
@@ -49,6 +61,10 @@ Message Message::parse(const QByteArray& raw, bool *ok)
         quint8 type = 0;
         input >> type;
         result.setType(static_cast<Type>(type));
+        quint16 bodySize = 0;
+        input >> bodySize;
+        result.m_body.resize(bodySize);
+        input.readRawData(result.m_body.data(), bodySize);
     }
 
     if (ok != nullptr)
