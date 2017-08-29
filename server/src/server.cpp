@@ -137,11 +137,38 @@ QString Server::errorString() const
 void Server::incomingMessage(const Message& message,
                              const NetworkAddress& sender)
 {
-    // TODO
-    qDebug().noquote() << qApp->tr("IN [%1:%2]:\ntype=%4")
+    qDebug().noquote() << qApp->tr("IN [%1:%2]:\ntype=%3")
                           .arg(sender.address.toString())
                           .arg(sender.port)
                           .arg(static_cast<quint8>(message.type()));
+    switch (message.type())
+    {
+    case Message::Type::InfoRequest:
+        {
+            // TODO
+            Message response(Message::Type::InfoResponse);
+            QByteArray serialized;
+            {
+                QDataStream output(&serialized, QIODevice::WriteOnly);
+                output << response;
+            }
+
+            QHash<QAbstractSocket*, QDateTime>::const_iterator it = m_activeConnections.cbegin();
+            while (it != m_activeConnections.cend())
+            {
+                QAbstractSocket* each = it.key();
+                if (   each->peerAddress() == sender.address
+                    && each->peerPort() == sender.port)
+                {
+                    each->write(serialized);
+                    break;
+                }
+                ++it;
+            }
+        }
+    default:
+        break;
+    }
 }
 
 TcpServer::TcpServer(const NetworkAddress& address, QObject* parent) :
@@ -280,15 +307,16 @@ void TcpServer::tryProcessIncomingMessage(QTcpSocket* sender)
 
             switch (message.type())
             {
-            case Message::Type::Unknown:
-            case Message::Type::Subscribe:
-            case Message::Type::Unsubscribe:
-                qt_noop();
-                break;
-            default:
+            case Message::Type::InfoRequest:
+            case Message::Type::InfoResponse:
                 incomingMessage(message,
                                 NetworkAddress(sender->peerAddress(),
                                                sender->peerPort()));
+                break;
+            case Message::Type::Unknown:
+            case Message::Type::Subscribe:
+            case Message::Type::Unsubscribe:
+            default:
                 break;
             }
 
@@ -405,8 +433,10 @@ void UdpServer::tryProcessIncomingMessage(const NetworkAddress& peer, QByteArray
 
         switch (message.type())
         {
-        case Message::Type::Unknown:
-            qt_noop();
+        case Message::Type::InfoRequest:
+        case Message::Type::InfoResponse:
+            incomingMessage(message, peer);
+            tryProcessIncomingMessage(peer, rawBytes);
             break;
         case Message::Type::Subscribe:
             addSubscriber(peer);
@@ -422,9 +452,8 @@ void UdpServer::tryProcessIncomingMessage(const NetworkAddress& peer, QByteArray
         case Message::Type::Unsubscribe:
             removeSubscriber(peer);
             break;
+        case Message::Type::Unknown:
         default:
-            incomingMessage(message, peer);
-            tryProcessIncomingMessage(peer, rawBytes);
             break;
         }
     }
@@ -467,7 +496,6 @@ void UdpServer::slotOnError()
     QUdpSocket* socket = qobject_cast<QUdpSocket*>(sender());
     if (socket != nullptr)
     {
-        // TODO
         m_lastError = socket->errorString();
         qWarning().noquote() << tr("Error [%1:%2]: %3")
                                 .arg(socket->peerAddress().toString())

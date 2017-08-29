@@ -75,7 +75,6 @@ Message Message::parse(const QByteArray& raw, bool *ok)
         case Type::Unsubscribe:
         case Type::InfoRequest:
         case Type::InfoResponse:
-        case Type::Ping:
             *ok = true;
             break;
         default:

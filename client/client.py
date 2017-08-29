@@ -7,7 +7,7 @@ from time import sleep
 def main(args):
     kSubscribe =   '\x00\x00\x00\x03\x01\x00\x00'
     kUnsubscribe = '\x00\x00\x00\x03\x02\x00\x00'
-    kPing =        '\x00\x00\x00\x03\x03\x00\x00'
+    kInfoRequest = '\x00\x00\x00\x03\x03\x00\x00'
 
     sock = None
     try:
@@ -30,17 +30,14 @@ def main(args):
         count = 0
         while True:
             try:
-#                data = sock.recv(1024)
-#                if not data:
-#                    break
                 if count == 0:
                     sock.send(kSubscribe)
                 else:
-                    sock.send(kPing)
+                    sock.send(kInfoRequest)
                 count += 1
                 sleep(1)
             except socket.error as e:
-                print (e)
+                print(e)
                 break
 
     except KeyboardInterrupt:

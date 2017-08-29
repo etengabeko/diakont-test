@@ -16,7 +16,6 @@ public:
         Unknown = 0,
         Subscribe,
         Unsubscribe,
-        Ping,
         InfoRequest,
         InfoResponse
     };
