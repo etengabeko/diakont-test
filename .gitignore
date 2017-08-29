@@ -1,0 +1,7 @@
+build/
+Makefile
+*.o
+*.pro.user*
+*.autosave
+*.swp
+*~
