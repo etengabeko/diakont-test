@@ -68,12 +68,17 @@ void Client::removeConnection()
         m_socket->close();
         m_socket->deleteLater();
         m_socket = nullptr;
+
+        m_incomingPort = 0;
+        m_receivedBytes.clear();
     }
 }
 
 void Client::slotConnect()
 {
-    if (createConnection())
+    QAbstractSocket::SocketType type = (m_ui->tcpRadioButton->isChecked() ? QAbstractSocket::TcpSocket
+                                                                          : QAbstractSocket::UdpSocket);
+    if (createConnection(type))
     {
         m_timer->start();
         enableControls(false);
@@ -102,37 +107,52 @@ void Client::enableControls(bool enabled)
     m_ui->disconnectButton->setEnabled(!enabled);
 }
 
-bool Client::createConnection()
+bool Client::createConnection(QAbstractSocket::SocketType type)
 {
     if (m_socket != nullptr)
     {
         removeConnection();
     }
-    m_receivedBytes.clear();
 
-    enum
-    {
-        Tcp,
-        Udp
-    } protocol = (m_ui->tcpRadioButton->isChecked() ? Tcp : Udp);
+    QString strAddress = m_ui->addressLineEdit->text();
+    QHostAddress remoteAddress = (strAddress.toLower() == "localhost") ? QHostAddress(QHostAddress::LocalHost)
+                                                                       : QHostAddress(strAddress);
+    quint16 remotePort = m_ui->portSpinBox->value();
 
-    if (protocol == Tcp)
+    QString errorMessage;
+    if (type == QAbstractSocket::TcpSocket)
     {
         m_socket = new QTcpSocket(this);
+        connect(m_socket, &QTcpSocket::readyRead,
+                this, &Client::slotReadTcpResponse);
+        m_socket->connectToHost(remoteAddress, remotePort);
+        if (m_socket->waitForConnected())
+        {
+            m_incomingPort = m_socket->localPort();
+        }
+        else
+        {
+            errorMessage = m_socket->errorString();
+        }
     }
     else
     {
         m_socket = new QUdpSocket(this);
+        QUdpSocket* incomingSocket = new QUdpSocket(m_socket);
+        connect(incomingSocket, &QUdpSocket::readyRead,
+                this, &Client::slotReadUdpResponse);
+        if (incomingSocket->bind())
+        {
+            m_incomingPort = incomingSocket->localPort();
+            m_socket->connectToHost(remoteAddress, remotePort);
+        }
+        else
+        {
+            errorMessage = incomingSocket->errorString();
+        }
     }
-    connect(m_socket, &QAbstractSocket::readyRead,
-            this, &Client::slotReadResponse);
 
-    QString strAddress = m_ui->addressLineEdit->text();
-    QHostAddress address = (strAddress.toLower() == "localhost") ? QHostAddress(QHostAddress::LocalHost)
-                                                                 : QHostAddress(strAddress);
-    m_socket->connectToHost(address, m_ui->portSpinBox->value());
-
-    bool ok = m_socket->waitForConnected();
+    bool ok = errorMessage.isEmpty();
     if (ok)
     {
         sendSubscribe();
@@ -141,7 +161,7 @@ bool Client::createConnection()
     {
         QMessageBox::warning(this,
                              tr("Connection error"),
-                             m_socket->errorString());
+                             errorMessage);
     }
     return ok;
 }
@@ -171,6 +191,7 @@ void Client::sendMessage(Message::Type type)
     if (m_socket != nullptr)
     {
         Message request(type);
+        request.setBackwardPort(m_incomingPort);
         QByteArray message;
         {
             QDataStream output(&message, QIODevice::WriteOnly);
@@ -180,11 +201,27 @@ void Client::sendMessage(Message::Type type)
     }
 }
 
-void Client::slotReadResponse()
+void Client::slotReadTcpResponse()
 {
-    if (m_socket == sender())
+    QTcpSocket* socket = qobject_cast<QTcpSocket*>(sender());
+    if (socket != nullptr)
     {
-        m_receivedBytes.append(m_socket->readAll());
+        m_receivedBytes.append(socket->readAll());
+        tryProcessResponse();
+    }
+}
+
+void Client::slotReadUdpResponse()
+{
+    QUdpSocket* socket = qobject_cast<QUdpSocket*>(sender());
+    if (socket != nullptr)
+    {
+        while (socket->hasPendingDatagrams())
+        {
+            QByteArray datagram(socket->pendingDatagramSize(), '\0');
+            socket->readDatagram(datagram.data(), datagram.size());
+            m_receivedBytes.append(datagram);
+        }
         tryProcessResponse();
     }
 }

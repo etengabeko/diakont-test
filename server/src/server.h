@@ -2,14 +2,15 @@
 #define NETCOM_SERVER_H
 
 #include <memory>
+#include <tuple>
 
+#include <QAbstractSocket>
 #include <QDateTime>
 #include <QHostAddress>
 #include <QObject>
 #include <QHash>
 #include <QString>
 
-class QAbstractSocket;
 class QTcpServer;
 class QTcpSocket;
 class QUdpSocket;
@@ -18,14 +19,7 @@ namespace Netcom
 {
 class Message;
 
-enum class Protocol
-{
-    Unknown,
-    Tcp,
-    Udp
-};
-
-Protocol protocolFromString(const QString& str);
+QAbstractSocket::SocketType protocolFromString(const QString& str);
 
 struct NetworkAddress
 {
@@ -45,9 +39,9 @@ public:
     explicit Server(const NetworkAddress& address);
     virtual ~Server() = 0;
 
-    static std::unique_ptr<Server> createServer(Protocol protocol,
+    static std::unique_ptr<Server> createServer(QAbstractSocket::SocketType protocol,
                                                 const NetworkAddress& address);
-    static std::unique_ptr<Server> createServer(const QString& protocol,
+    static std::unique_ptr<Server> createServer(const QString& protocolName,
                                                 const NetworkAddress& address);
 
     bool start();
@@ -60,9 +54,7 @@ protected:
     virtual bool run() = 0;
     virtual void finish() = 0;
 
-    void incomingMessage(const Message& message,
-                         const NetworkAddress& sender);
-
+    void incomingMessage(const Message& message, QAbstractSocket* sender);
     void addConnection(QAbstractSocket* socket);
     void removeConnection(QAbstractSocket* socket);
 
@@ -118,16 +110,14 @@ private slots:
     void slotOnError();
     void slotReadDatagram();
 
-    void addSubscriber(const NetworkAddress& peer);
+    void addSubscriber(const NetworkAddress& peer, quint16 peerIncomingPort);
     void removeSubscriber(const NetworkAddress& peer);
 
-    void tryProcessIncomingMessage(const NetworkAddress& peer, QByteArray& rawBytes);
+    void tryProcessIncomingMessage(const NetworkAddress& peer);
 
 private:
     QUdpSocket* m_incoming;
-    QHash<NetworkAddress, QByteArray> m_receivedBytes;
-
-    QHash<QUdpSocket*, QByteArray> m_clients;
+    QHash<NetworkAddress, std::tuple<QUdpSocket*, QByteArray>> m_clients;
 
 };
 

@@ -36,34 +36,35 @@ bool NetworkAddress::operator!= (const NetworkAddress& rhs) const
     return !(*this == rhs);
 }
 
-Protocol protocolFromString(const QString& str)
+QAbstractSocket::SocketType protocolFromString(const QString& str)
 {
-    static const QHash<QString, Protocol> protocols({ { "tcp", Protocol::Tcp },
-                                                      { "udp", Protocol::Udp } });
+    static const QHash<QString, QAbstractSocket::SocketType> protocols({ { "tcp", QAbstractSocket::TcpSocket },
+                                                                         { "udp", QAbstractSocket::UdpSocket }
+                                                                       });
     if (protocols.contains(str.toLower()))
     {
         return protocols[str.toLower()];
     }
-    return Protocol::Unknown;
+    return QAbstractSocket::UnknownSocketType;
 }
 
-std::unique_ptr<Server> Server::createServer(const QString& protocol,
+std::unique_ptr<Server> Server::createServer(const QString& protocolName,
                                              const NetworkAddress& address)
 {
-    return createServer(protocolFromString(protocol), address);
+    return createServer(protocolFromString(protocolName), address);
 }
 
-std::unique_ptr<Server> Server::createServer(Protocol protocol,
+std::unique_ptr<Server> Server::createServer(QAbstractSocket::SocketType protocol,
                                              const NetworkAddress& address)
 {
     std::unique_ptr<Server> result;
 
     switch (protocol)
     {
-    case Protocol::Tcp:
+    case QAbstractSocket::TcpSocket:
         result.reset(new TcpServer(address));
         break;
-    case Protocol::Udp:
+    case QAbstractSocket::UdpSocket:
         result.reset(new UdpServer(address));
         break;
     default:
@@ -134,13 +135,15 @@ QString Server::errorString() const
     return m_lastError;
 }
 
-void Server::incomingMessage(const Message& message,
-                             const NetworkAddress& sender)
+void Server::incomingMessage(const Message& message, QAbstractSocket* sender)
 {
+    Q_CHECK_PTR(sender);
+
+    // TODO
     qInfo().noquote() << qApp->tr("%1 - Incoming message from %2:%3]:\ntype=%4")
                          .arg(QDateTime::currentDateTime().toString("hh:mm:ss.zzz"))
-                         .arg(sender.address.toString())
-                         .arg(sender.port)
+                         .arg(sender->peerAddress().toString())
+                         .arg(sender->peerPort())
                          .arg(static_cast<quint8>(message.type()));
     switch (message.type())
     {
@@ -154,17 +157,10 @@ void Server::incomingMessage(const Message& message,
                 output << response;
             }
 
-            QHash<QAbstractSocket*, QDateTime>::const_iterator it = m_activeConnections.cbegin();
-            while (it != m_activeConnections.cend())
+            auto founded = m_activeConnections.find(sender);
+            if (founded != m_activeConnections.end())
             {
-                QAbstractSocket* each = it.key();
-                if (   each->peerAddress() == sender.address
-                    && each->peerPort() == sender.port)
-                {
-                    each->write(serialized);
-                    break;
-                }
-                ++it;
+                founded.key()->write(serialized);
             }
         }
     default:
@@ -223,12 +219,10 @@ void TcpServer::slotOnNewConnect()
     {
         if (socket->peerAddress() != m_address.address)
         {
-            qWarning().noquote() << tr("%1 - Discard connection from %2:%3. Expected only %4:%5.")
+            qWarning().noquote() << tr("%1 - Discard connection from %2. Expected only %3.")
                                     .arg(QDateTime::currentDateTime().toString("hh:mm:ss.zzz"))
                                     .arg(socket->peerAddress().toString())
-                                    .arg(socket->peerPort())
-                                    .arg(m_address.address.toString())
-                                    .arg(m_address.port);
+                                    .arg(m_address.address.toString());
             socket->disconnectFromHost();
             return;
         }
@@ -317,9 +311,7 @@ void TcpServer::tryProcessIncomingMessage(QTcpSocket* sender)
             {
             case Message::Type::InfoRequest:
             case Message::Type::InfoResponse:
-                incomingMessage(message,
-                                NetworkAddress(sender->peerAddress(),
-                                               sender->peerPort()));
+                incomingMessage(message, sender);
                 break;
             case Message::Type::Unknown:
             case Message::Type::Subscribe:
@@ -364,13 +356,16 @@ void UdpServer::finish()
 {
     m_incoming->close();
 
-    QHash<QUdpSocket*, QByteArray>::iterator it = m_clients.begin();
+    QHash<NetworkAddress, std::tuple<QUdpSocket*, QByteArray>>::iterator it = m_clients.begin();
     while (it != m_clients.end())
     {
-        QUdpSocket* each = it.key();
-        removeConnection(each);
-        each->close();
-        each->deleteLater();
+        QUdpSocket* each = std::get<QUdpSocket*>(*it);
+        if (each != nullptr)
+        {
+            removeConnection(each);
+            each->close();
+            each->deleteLater();
+        }
         it = m_clients.erase(it);
     }
 }
@@ -389,79 +384,62 @@ void UdpServer::slotReadDatagram()
         {
             if (peer.address != m_address.address)
             {
-                qWarning().noquote() << tr("%1 - Discard connection from %2:%3. Expected only %4:%5.")
+                qWarning().noquote() << tr("%1 - Discard connection from %2. Expected only %3.")
                                         .arg(QDateTime::currentDateTime().toString("hh:mm:ss.zzz"))
                                         .arg(peer.address.toString())
-                                        .arg(peer.port)
-                                        .arg(m_address.address.toString())
-                                        .arg(m_address.port);
+                                        .arg(m_address.address.toString());
                 continue;
             }
         }
 
-        QHash<QUdpSocket*, QByteArray>::iterator it = m_clients.begin();
-        while (it != m_clients.end())
+        if (!m_clients.contains(peer))
         {
-            QUdpSocket* socket = it.key();
-            if (   socket->peerAddress() == peer.address
-                && socket->peerPort() == peer.port)
-            {
-                break;
-            }
+            m_clients.insert(peer, std::make_tuple(static_cast<QUdpSocket*>(nullptr), QByteArray()));
         }
+        std::get<QByteArray>(m_clients[peer]).append(datagram);
 
-        if (it == m_clients.end())
-        {
-            m_receivedBytes[peer].append(datagram);
-            tryProcessIncomingMessage(peer, m_receivedBytes[peer]);
-        }
-        else
-        {
-            it->append(datagram);
-            tryProcessIncomingMessage(peer, *it);
-        }
+        tryProcessIncomingMessage(peer);
     }
 }
 
-void UdpServer::tryProcessIncomingMessage(const NetworkAddress& peer, QByteArray& rawBytes)
+void UdpServer::tryProcessIncomingMessage(const NetworkAddress& peer)
 {
-    if (rawBytes.isEmpty())
+    if (   !m_clients.contains(peer)
+        || std::get<QByteArray>(m_clients[peer]).isEmpty())
     {
         return;
     }
 
+    QByteArray& receivedBytes = std::get<QByteArray>(m_clients[peer]);
     quint32 expectedSize = 0;
     {
-        QDataStream input(&rawBytes, QIODevice::ReadOnly);
+        QDataStream input(&receivedBytes, QIODevice::ReadOnly);
         input >> expectedSize;
     }
     if (   expectedSize > 0
-        && static_cast<quint32>(rawBytes.size() - sizeof(expectedSize)) >= expectedSize)
+        && static_cast<quint32>(receivedBytes.size() - sizeof(expectedSize)) >= expectedSize)
     {
         Message message;
         {
-            QDataStream input(rawBytes);
+            QDataStream input(receivedBytes);
             input >> message;
         }
-        rawBytes = rawBytes.right(rawBytes.size() - sizeof(expectedSize) - expectedSize);
+        receivedBytes = receivedBytes.right(receivedBytes.size() - sizeof(expectedSize) - expectedSize);
 
         switch (message.type())
         {
         case Message::Type::InfoRequest:
         case Message::Type::InfoResponse:
-            incomingMessage(message, peer);
-            tryProcessIncomingMessage(peer, rawBytes);
+            {
+                QUdpSocket* backSocket = std::get<QUdpSocket*>(m_clients[peer]);
+                if (backSocket != nullptr)
+                {
+                    incomingMessage(message, backSocket);
+                }
+            }
             break;
         case Message::Type::Subscribe:
-            addSubscriber(peer);
-            if (rawBytes.isEmpty())
-            {
-                m_receivedBytes.remove(peer);
-            }
-            else
-            {
-                tryProcessIncomingMessage(peer, rawBytes);
-            }
+            addSubscriber(peer, message.backwardPort());
             break;
         case Message::Type::Unsubscribe:
             removeSubscriber(peer);
@@ -470,37 +448,38 @@ void UdpServer::tryProcessIncomingMessage(const NetworkAddress& peer, QByteArray
         default:
             break;
         }
+
+        tryProcessIncomingMessage(peer);
     }
 }
 
-void UdpServer::addSubscriber(const NetworkAddress& peer)
+void UdpServer::addSubscriber(const NetworkAddress& peer, quint16 peerIncomingPort)
 {
-    QUdpSocket* socket = new QUdpSocket(this);
-    connect(socket, &QUdpSocket::readyRead,
-            this, &UdpServer::slotReadDatagram);
-    connect(socket, static_cast<void(QUdpSocket::*)(QAbstractSocket::SocketError)>(&QUdpSocket::error),
-            this, &UdpServer::slotOnError);
+    if (   m_clients.contains(peer)
+        && std::get<QUdpSocket*>(m_clients[peer]) == nullptr)
+    {
+        QUdpSocket* socket = new QUdpSocket(this);
+        connect(socket, static_cast<void(QUdpSocket::*)(QAbstractSocket::SocketError)>(&QUdpSocket::error),
+                this, &UdpServer::slotOnError);
 
-    m_clients.insert(socket, QByteArray());
+        socket->connectToHost(peer.address, peerIncomingPort);
+        std::get<QUdpSocket*>(m_clients[peer]) = socket;
 
-    socket->connectToHost(peer.address, peer.port);
-    addConnection(socket);
+        addConnection(socket);
+    }
 }
 
 void UdpServer::removeSubscriber(const NetworkAddress& peer)
 {
-    QHash<QUdpSocket*, QByteArray>::iterator it = m_clients.begin();
-    while (it != m_clients.end())
+    if (m_clients.contains(peer))
     {
-        QUdpSocket* socket = it.key();
-        if (   socket->peerAddress() == peer.address
-            && socket->peerPort() == peer.port)
+        QUdpSocket* socket = std::get<QUdpSocket*>(m_clients[peer]);
+        if (socket != nullptr)
         {
             removeConnection(socket);
             socket->close();
             socket->deleteLater();
-            m_clients.erase(it);
-            break;
+            m_clients.remove(peer);
         }
     }
 }

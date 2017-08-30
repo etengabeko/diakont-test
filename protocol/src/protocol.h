@@ -27,6 +27,9 @@ public:
     Type type() const;
     void setType(Type type);
 
+    quint16 backwardPort() const;
+    void setBackwardPort(quint16 port);
+
     QByteArray body() const;
     void setBody(const QByteArray& body);
 
@@ -35,6 +38,7 @@ public:
 
 private:
     Type m_type = Type::Unknown;
+    quint16 m_backwardPort = 0;
     QByteArray m_body;
 
 };

@@ -21,6 +21,16 @@ void Message::setType(Type type)
     m_type = type;
 }
 
+quint16 Message::backwardPort() const
+{
+    return m_backwardPort;
+}
+
+void Message::setBackwardPort(quint16 port)
+{
+    m_backwardPort = port;
+}
+
 QByteArray Message::body() const
 {
     return m_body;
@@ -39,6 +49,7 @@ QByteArray Message::serialize() const
     {
         QDataStream output(&result, QIODevice::WriteOnly);
         output << static_cast<quint8>(m_type);
+        output << m_backwardPort;
         output << static_cast<quint16>(m_body.size());
         output.writeRawData(m_body.data(), m_body.size());
     }
@@ -61,6 +72,7 @@ Message Message::parse(const QByteArray& raw, bool *ok)
         quint8 type = 0;
         input >> type;
         result.setType(static_cast<Type>(type));
+        input >> result.m_backwardPort;
         quint16 bodySize = 0;
         input >> bodySize;
         result.m_body.resize(bodySize);

@@ -1,12 +1,12 @@
 #ifndef NETCOM_CLIENT_H
 #define NETCOM_CLIENT_H
 
+#include <QAbstractSocket>
 #include <QByteArray>
 #include <QWidget>
 
 #include <protocol.h>
 
-class QAbstractSocket;
 class QTimer;
 
 namespace Ui
@@ -32,12 +32,14 @@ private slots:
     void slotConnect();
     void slotDisconnect();
     void slotTimeout();
-    void slotReadResponse();
+
+    void slotReadTcpResponse();
+    void slotReadUdpResponse();
 
 private:
     void enableControls(bool enabled);
 
-    bool createConnection();
+    bool createConnection(QAbstractSocket::SocketType type);
     void removeConnection();
 
     void sendSubscribe();
@@ -51,6 +53,7 @@ private:
     Ui::ClientWidget* m_ui;
 
     QAbstractSocket* m_socket = nullptr;
+    quint16 m_incomingPort = 0;
     QByteArray m_receivedBytes;
 
     QTimer* m_timer = nullptr;
