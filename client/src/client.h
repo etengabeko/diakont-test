@@ -8,6 +8,7 @@
 #include <protocol.h>
 
 class QTimer;
+template <typename T> class QList;
 
 namespace Ui
 {
@@ -38,6 +39,7 @@ private slots:
 
 private:
     void enableControls(bool enabled);
+    void showClientsList(const QList<ClientInfo>& clients);
 
     bool createConnection(QAbstractSocket::SocketType type);
     void removeConnection();

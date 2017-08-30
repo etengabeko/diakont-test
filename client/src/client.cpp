@@ -3,9 +3,9 @@
 
 #include <QCloseEvent>
 #include <QDataStream>
-#include <QDebug>
 #include <QHostAddress>
 #include <QMessageBox>
+#include <QTableWidgetItem>
 #include <QTcpSocket>
 #include <QTimer>
 #include <QUdpSocket>
@@ -14,6 +14,13 @@ namespace
 {
 
 int customTimerIntervalMsec() { return 1000; }
+
+enum Column
+{
+    Address = 0,
+    Port,
+    Datetime
+};
 
 }
 
@@ -38,6 +45,10 @@ Client::Client(QWidget* parent) :
 
     connect(m_timer, &QTimer::timeout,
             this, &Client::slotTimeout);
+
+    m_ui->clientsTableWidget->horizontalHeader()->setResizeContentsPrecision(0);
+    m_ui->clientsTableWidget->resizeColumnsToContents();
+    m_ui->clientsTableWidget->horizontalHeader()->setSectionResizeMode(Datetime, QHeaderView::Stretch);
 }
 
 Client::~Client()
@@ -72,6 +83,8 @@ void Client::removeConnection()
         m_incomingPort = 0;
         m_receivedBytes.clear();
     }
+
+    m_ui->clientsTableWidget->clearContents();
 }
 
 void Client::slotConnect()
@@ -250,11 +263,40 @@ void Client::tryProcessResponse()
 
         m_receivedBytes = m_receivedBytes.right(m_receivedBytes.size() - sizeof(expectedSize) - expectedSize);
 
-        // TODO
-        qDebug().noquote() << tr("Received message:\n%1")
-                              .arg(QString::fromUtf8(response.serialize()));
+        showClientsList(response.clientsInfo());
+
         tryProcessResponse();
     }
+}
+
+void Client::showClientsList(const QList<ClientInfo>& clients)
+{
+    m_ui->clientsTableWidget->clearContents();
+    m_ui->clientsTableWidget->setRowCount(clients.count());
+
+    for (int row = 0, sz = clients.size(); row < sz; ++row)
+    {
+        const ClientInfo& each = clients.at(row);
+
+        QTableWidgetItem* item = new QTableWidgetItem(each.address);
+        item->setFlags(item->flags() ^ Qt::ItemIsEditable);
+        item->setTextAlignment(Qt::AlignCenter);
+        m_ui->clientsTableWidget->setItem(row, Address, item);
+
+        item = new QTableWidgetItem(QString::number(each.port));
+        item->setFlags(item->flags() ^ Qt::ItemIsEditable);
+        item->setTextAlignment(Qt::AlignCenter);
+        m_ui->clientsTableWidget->setItem(row, Port, item);
+
+        item = new QTableWidgetItem(each.datetime.toString("hh:mm:ss dd-MM-yyyy"));
+        item->setFlags(item->flags() ^ Qt::ItemIsEditable);
+        item->setTextAlignment(Qt::AlignCenter);
+        m_ui->clientsTableWidget->setItem(row, Datetime, item);
+    }
+
+    m_ui->clientsTableWidget->horizontalHeader()->setResizeContentsPrecision(0);
+    m_ui->clientsTableWidget->resizeColumnsToContents();
+    m_ui->clientsTableWidget->horizontalHeader()->setSectionResizeMode(Datetime, QHeaderView::Stretch);
 }
 
 } // Netcom

@@ -2,7 +2,7 @@ TEMPLATE = app
 PROJECT = client
 TARGET = $$PROJECT
 
-CONFIG += console
+CONFIG -= console
 CONFIG -= app_bundle
 
 QT += core \
