@@ -50,6 +50,8 @@ public:
 
     QString errorString() const;
 
+    void setLogFileName(const QString& fileName);
+
 protected:
     virtual bool run() = 0;
     virtual void finish() = 0;
@@ -58,13 +60,15 @@ protected:
     void addConnection(QAbstractSocket* socket);
     void removeConnection(QAbstractSocket* socket);
 
+    void logging(const QString& message, QtMsgType type) const;
+
 protected:
     QString m_lastError;
-
     NetworkAddress m_address;
 
 private:
     QHash<QAbstractSocket*, QDateTime> m_activeConnections;
+    QString m_logFileName;
 
 };
 

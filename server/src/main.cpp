@@ -24,11 +24,22 @@ int main(int argc, char *argv[])
     parser.addHelpOption();
     parser.addPositionalArgument("url", app.tr("Server options: <protocol>://<address>:<port>."));
 
+    QCommandLineOption fileOption(QStringList({ "f", "file" }),
+                                  app.tr("Log filename"),
+                                  app.tr("filename"));
+    parser.addOption(fileOption);
+
     parser.process(app);
 
     if (parser.isSet("help"))
     {
         parser.showHelp();
+    }
+
+    QString logFileName;
+    if (parser.isSet(fileOption))
+    {
+        logFileName = parser.value(fileOption);
     }
 
     QStringList args = parser.positionalArguments();
@@ -55,10 +66,13 @@ int main(int argc, char *argv[])
                                                                                                                         : (address == "@" ? QHostAddress::Any
                                                                                                                                           : QHostAddress(address)),
                                                                                                  port));
-    if (   server != nullptr
-        && server->start())
+    if (server != nullptr)
     {
-        return app.exec();
+        server->setLogFileName(logFileName);
+        if (server->start())
+        {
+            return app.exec();
+        }
     }
 
     qWarning().noquote() << app.tr("Failed start server: protocol=%1, address=%2, port=%3:\n%4")

@@ -3,6 +3,8 @@
 #include <QCoreApplication>
 #include <QDataStream>
 #include <QDebug>
+#include <QFile>
+#include <QTextStream>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QUdpSocket>
@@ -108,10 +110,11 @@ void Server::addConnection(QAbstractSocket* socket)
     if (!m_activeConnections.contains(socket))
     {
         m_activeConnections.insert(socket, QDateTime::currentDateTime());
-        qInfo().noquote() << qApp->tr("%1 - Added connection from %2:%3")
-                             .arg(m_activeConnections[socket].toString("hh:mm:ss.zzz"))
-                             .arg(socket->peerAddress().toString())
-                             .arg(socket->peerPort());
+        logging(qApp->tr("%1 - Added connection from %2:%3")
+                .arg(m_activeConnections[socket].toString("hh:mm:ss.zzz"))
+                .arg(socket->peerAddress().toString())
+                .arg(socket->peerPort()),
+                QtInfoMsg);
     }
 }
 
@@ -122,10 +125,11 @@ void Server::removeConnection(QAbstractSocket* socket)
     if (m_activeConnections.contains(socket))
     {
         m_activeConnections.remove(socket);
-        qInfo().noquote() << qApp->tr("%1 - Removed connection from %2:%3")
-                             .arg(QDateTime::currentDateTime().toString("hh:mm:ss.zzz"))
-                             .arg(socket->peerAddress().toString())
-                             .arg(socket->peerPort());
+        logging(qApp->tr("%1 - Removed connection from %2:%3")
+                .arg(QDateTime::currentDateTime().toString("hh:mm:ss.zzz"))
+                .arg(socket->peerAddress().toString())
+                .arg(socket->peerPort()),
+                QtInfoMsg);
     }
 }
 
@@ -134,15 +138,21 @@ QString Server::errorString() const
     return m_lastError;
 }
 
+void Server::setLogFileName(const QString& fileName)
+{
+    m_logFileName = fileName;
+}
+
 void Server::incomingMessage(const Message& message, QAbstractSocket* sender)
 {
     Q_CHECK_PTR(sender);
 
-    qInfo().noquote() << qApp->tr("%1 - Incoming message from %2:%3]:\n%4")
-                         .arg(QDateTime::currentDateTime().toString("hh:mm:ss.zzz"))
-                         .arg(sender->peerAddress().toString())
-                         .arg(sender->peerPort())
-                         .arg(QString::fromUtf8(message.serialize()));
+    logging(qApp->tr("%1 - Incoming message from %2:%3]:\n%4")
+            .arg(QDateTime::currentDateTime().toString("hh:mm:ss.zzz"))
+            .arg(sender->peerAddress().toString())
+            .arg(sender->peerPort())
+            .arg(QString::fromUtf8(message.serialize())),
+            QtInfoMsg);
     switch (message.type())
     {
     case Message::Type::InfoRequest:
@@ -173,6 +183,40 @@ void Server::incomingMessage(const Message& message, QAbstractSocket* sender)
         }
     default:
         break;
+    }
+}
+
+void Server::logging(const QString& message, QtMsgType type) const
+{
+    switch (type)
+    {
+    case QtDebugMsg:
+        qDebug().noquote() << message;
+        break;
+    case QtInfoMsg:
+        qInfo().noquote() << message;
+        break;
+    case QtWarningMsg:
+        qWarning().noquote() << message;
+        break;
+    case QtCriticalMsg:
+    default:
+        qCritical().noquote() << message;
+        break;
+    }
+
+    if (!m_logFileName.isEmpty())
+    {
+        QFile f(m_logFileName);
+        if (f.open(QFile::Append))
+        {
+            QTextStream output(&f);
+            output << message << endl;
+        }
+        else
+        {
+            qWarning().noquote() << f.errorString();
+        }
     }
 }
 
@@ -227,10 +271,11 @@ void TcpServer::slotOnNewConnect()
     {
         if (socket->peerAddress() != m_address.address)
         {
-            qWarning().noquote() << tr("%1 - Discard connection from %2. Expected only %3.")
-                                    .arg(QDateTime::currentDateTime().toString("hh:mm:ss.zzz"))
-                                    .arg(socket->peerAddress().toString())
-                                    .arg(m_address.address.toString());
+            logging(tr("%1 - Discard connection from %2. Expected only %3.")
+                    .arg(QDateTime::currentDateTime().toString("hh:mm:ss.zzz"))
+                    .arg(socket->peerAddress().toString())
+                    .arg(m_address.address.toString()),
+                    QtWarningMsg);
             socket->disconnectFromHost();
             return;
         }
@@ -265,13 +310,13 @@ void TcpServer::slotOnError()
     {
         if (socket->error() != QTcpSocket::RemoteHostClosedError)
         {
-
             m_lastError = socket->errorString();
-            qWarning().noquote() << tr("%1 - Error %2:%3: %4")
-                                    .arg(QDateTime::currentDateTime().toString("hh:mm:ss.zzz"))
-                                    .arg(socket->peerAddress().toString())
-                                    .arg(socket->peerPort())
-                                    .arg(m_lastError);
+            logging(tr("%1 - Error %2:%3: %4")
+                    .arg(QDateTime::currentDateTime().toString("hh:mm:ss.zzz"))
+                    .arg(socket->peerAddress().toString())
+                    .arg(socket->peerPort())
+                    .arg(m_lastError),
+                    QtWarningMsg);
         }
     }
 }
@@ -392,10 +437,11 @@ void UdpServer::slotReadDatagram()
         {
             if (peer.address != m_address.address)
             {
-                qWarning().noquote() << tr("%1 - Discard connection from %2. Expected only %3.")
-                                        .arg(QDateTime::currentDateTime().toString("hh:mm:ss.zzz"))
-                                        .arg(peer.address.toString())
-                                        .arg(m_address.address.toString());
+                logging(tr("%1 - Discard connection from %2. Expected only %3.")
+                        .arg(QDateTime::currentDateTime().toString("hh:mm:ss.zzz"))
+                        .arg(peer.address.toString())
+                        .arg(m_address.address.toString()),
+                        QtWarningMsg);
                 continue;
             }
         }
@@ -498,11 +544,12 @@ void UdpServer::slotOnError()
     if (socket != nullptr)
     {
         m_lastError = socket->errorString();
-        qWarning().noquote() << tr("%1 - Error [%2:%3]: %4")
-                                .arg(QDateTime::currentDateTime().toString("hh:mm:ss.zzz"))
-                                .arg(socket->peerAddress().toString())
-                                .arg(socket->peerPort())
-                                .arg(m_lastError);
+        logging(tr("%1 - Error [%2:%3]: %4")
+                .arg(QDateTime::currentDateTime().toString("hh:mm:ss.zzz"))
+                .arg(socket->peerAddress().toString())
+                .arg(socket->peerPort())
+                .arg(m_lastError),
+                QtWarningMsg);
     }
 }
 

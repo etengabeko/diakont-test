@@ -85,6 +85,7 @@ void Client::removeConnection()
     }
 
     m_ui->clientsTableWidget->clearContents();
+    m_ui->clientsTableWidget->setRowCount(0);
 }
 
 void Client::slotConnect()
