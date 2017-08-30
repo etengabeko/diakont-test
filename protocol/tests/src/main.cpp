@@ -2,19 +2,10 @@
 
 #include <QByteArray>
 #include <QDataStream>
+#include <QDateTime>
 #include <QString>
 
 #include "protocol.h"
-
-namespace
-{
-
-QString loremIpsum()
-{
-    return "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.";
-}
-
-}
 
 class SerializeTest : public QObject
 {
@@ -26,8 +17,12 @@ private slots:
         using namespace Netcom;
 
         Message original(Message::Type::InfoResponse);
-        original.setBody(::loremIpsum().toUtf8());
-        
+        original.setBackwardPort(54321);
+
+        original.addClientInfo(ClientInfo("127.0.0.1",   12345, QDateTime::fromString("10:00:00 28-06-2017", "hh:mm:ss dd-MM-yyyy")));
+        original.addClientInfo(ClientInfo("localhost",   23456, QDateTime::fromString("11:11:11 29-07-2017", "hh:mm:ss dd-MM-yyyy")));
+        original.addClientInfo(ClientInfo("lorem_ipsum", 34567, QDateTime::fromString("12:12:12 30-08-2017", "hh:mm:ss dd-MM-yyyy")));
+
         QByteArray serialized;
         {
             QDataStream output(&serialized, QIODevice::WriteOnly);
@@ -41,8 +36,7 @@ private slots:
         }
 
         QCOMPARE(original.type(), parsed.type());
-        QCOMPARE(original.body(), parsed.body());
-        QCOMPARE(QString::fromUtf8(parsed.body()), ::loremIpsum());
+        QCOMPARE(original.clientsInfo(), parsed.clientsInfo());
     }
 
 };

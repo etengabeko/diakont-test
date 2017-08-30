@@ -3,7 +3,6 @@
 #include <QCoreApplication>
 #include <QDataStream>
 #include <QDebug>
-#include <QHash>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QUdpSocket>
@@ -109,10 +108,10 @@ void Server::addConnection(QAbstractSocket* socket)
     if (!m_activeConnections.contains(socket))
     {
         m_activeConnections.insert(socket, QDateTime::currentDateTime());
-        qInfo() << qApp->tr("%1 - Added connection from %2:%3")
-                   .arg(m_activeConnections[socket].toString("hh:mm:ss.zzz"))
-                   .arg(socket->peerAddress().toString())
-                   .arg(socket->peerPort());
+        qInfo().noquote() << qApp->tr("%1 - Added connection from %2:%3")
+                             .arg(m_activeConnections[socket].toString("hh:mm:ss.zzz"))
+                             .arg(socket->peerAddress().toString())
+                             .arg(socket->peerPort());
     }
 }
 
@@ -123,10 +122,10 @@ void Server::removeConnection(QAbstractSocket* socket)
     if (m_activeConnections.contains(socket))
     {
         m_activeConnections.remove(socket);
-        qInfo() << qApp->tr("%1 - Removed connection from %2:%3")
-                   .arg(QDateTime::currentDateTime().toString("hh:mm:ss.zzz"))
-                   .arg(socket->peerAddress().toString())
-                   .arg(socket->peerPort());
+        qInfo().noquote() << qApp->tr("%1 - Removed connection from %2:%3")
+                             .arg(QDateTime::currentDateTime().toString("hh:mm:ss.zzz"))
+                             .arg(socket->peerAddress().toString())
+                             .arg(socket->peerPort());
     }
 }
 
@@ -139,18 +138,27 @@ void Server::incomingMessage(const Message& message, QAbstractSocket* sender)
 {
     Q_CHECK_PTR(sender);
 
-    // TODO
-    qInfo().noquote() << qApp->tr("%1 - Incoming message from %2:%3]:\ntype=%4")
+    qInfo().noquote() << qApp->tr("%1 - Incoming message from %2:%3]:\n%4")
                          .arg(QDateTime::currentDateTime().toString("hh:mm:ss.zzz"))
                          .arg(sender->peerAddress().toString())
                          .arg(sender->peerPort())
-                         .arg(static_cast<quint8>(message.type()));
+                         .arg(QString::fromUtf8(message.serialize()));
     switch (message.type())
     {
     case Message::Type::InfoRequest:
         {
-            // TODO
             Message response(Message::Type::InfoResponse);
+            QHashIterator<QAbstractSocket*, QDateTime> it(m_activeConnections);
+            while (it.hasNext())
+            {
+                QAbstractSocket* eachClient = it.peekNext().key();
+                const QDateTime& eachDateTime = it.peekNext().value();
+                response.addClientInfo(ClientInfo(eachClient->peerAddress().toString(),
+                                                  eachClient->peerPort(),
+                                                  eachDateTime));
+                it.next();
+            }
+
             QByteArray serialized;
             {
                 QDataStream output(&serialized, QIODevice::WriteOnly);

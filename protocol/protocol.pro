@@ -5,7 +5,8 @@ TARGET = $$PROJECT
 CONFIG += console
 CONFIG -= app_bundle
 
-QT += core
+QT += core \
+      xml
 QT -= gui
 
 CONFIG += warn_on

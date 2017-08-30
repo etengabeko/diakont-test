@@ -1,12 +1,27 @@
 #ifndef NETCOM_PROTOCOL_H
 #define NETCOM_PROTOCOL_H
 
-#include <QByteArray>
+#include <QDateTime>
+#include <QList>
+#include <QString>
 
+class QByteArray;
 class QDataStream;
 
 namespace Netcom
 {
+struct ClientInfo
+{
+    QString address;
+    quint16 port = 0;
+    QDateTime datetime;
+
+    ClientInfo() = default;
+    ClientInfo(const QString& a, quint16 p, const QDateTime& d);
+
+    bool operator== (const ClientInfo& rhs) const;
+    bool operator!= (const ClientInfo& rhs) const;
+};
 
 class Message
 {
@@ -30,16 +45,22 @@ public:
     quint16 backwardPort() const;
     void setBackwardPort(quint16 port);
 
-    QByteArray body() const;
-    void setBody(const QByteArray& body);
+    const QList<ClientInfo>& clientsInfo() const;
+    void setClientsInfo(const QList<ClientInfo>& info);
+    void resetClientsInfo();
+    void addClientInfo(const ClientInfo& info);
 
     QByteArray serialize() const;
     static Message parse(const QByteArray& raw, bool* ok = nullptr);
 
+    static QString typeToString(Type type);
+    static Type typeFromString(const QString& type);
+
 private:
     Type m_type = Type::Unknown;
     quint16 m_backwardPort = 0;
-    QByteArray m_body;
+
+    QList<ClientInfo> m_info;
 
 };
 

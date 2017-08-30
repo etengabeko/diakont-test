@@ -1,9 +1,59 @@
 #include "protocol.h"
 
+#include <QCoreApplication>
+#include <QByteArray>
+#include <QDebug>
 #include <QDataStream>
+#include <QDomDocument>
+#include <QDomElement>
+#include <QMap>
+
+namespace
+{
+
+const QString dateTimeFormat() { return "hh:mm:ss dd-MM-yyyy"; }
+
+const QMap<Netcom::Message::Type, QString>& messageTypes()
+{
+    static const QMap<Netcom::Message::Type, QString> types({
+                                                                { Netcom::Message::Type::Subscribe,    "subscribe"     },
+                                                                { Netcom::Message::Type::Unsubscribe,  "unsubscribe"   },
+                                                                { Netcom::Message::Type::InfoRequest,  "info_request"  },
+                                                                { Netcom::Message::Type::InfoResponse, "info_response" },
+                                                                { Netcom::Message::Type::Unknown,      "unknown"       }
+                                                            });
+    return types;
+}
+
+}
 
 namespace Netcom
 {
+
+ClientInfo::ClientInfo(const QString& a, quint16 p, const QDateTime& d) :
+    address(a),
+    port(p),
+    datetime(d)
+{
+
+}
+
+bool ClientInfo::operator== (const ClientInfo& rhs) const
+{
+    if (this == &rhs)
+    {
+        return true;
+    }
+
+    return (   address == rhs.address
+            && port == rhs.port
+            && datetime == rhs.datetime);
+}
+
+bool ClientInfo::operator!= (const ClientInfo& rhs) const
+{
+    return !(*this == rhs);
+}
 
 Message::Message(Type type) :
     m_type(type)
@@ -31,52 +81,138 @@ void Message::setBackwardPort(quint16 port)
     m_backwardPort = port;
 }
 
-QByteArray Message::body() const
+const QList<ClientInfo>& Message::clientsInfo() const
 {
-    return m_body;
+    return m_info;
 }
 
-void Message::setBody(const QByteArray& body)
+void Message::setClientsInfo(const QList<ClientInfo>& info)
 {
-    m_body = body;
+    m_info = info;
+}
+
+void Message::addClientInfo(const ClientInfo& info)
+{
+    m_info.append(info);
+}
+
+void Message::resetClientsInfo()
+{
+    m_info.clear();
 }
 
 QByteArray Message::serialize() const
 {
-    // TODO
-
-    QByteArray result;
+    QDomDocument doc("netcom");
+    QDomElement root = doc.createElement("netcom");
+    doc.appendChild(root);
+    QDomElement message = doc.createElement("message");
+    message.setAttribute("type", typeToString(m_type));
+    root.appendChild(message);
+    if (!m_info.isEmpty())
     {
-        QDataStream output(&result, QIODevice::WriteOnly);
-        output << static_cast<quint8>(m_type);
-        output << m_backwardPort;
-        output << static_cast<quint16>(m_body.size());
-        output.writeRawData(m_body.data(), m_body.size());
+        QDomElement clients = doc.createElement("clients");
+        message.appendChild(clients);
+
+        for (const ClientInfo& each : m_info)
+        {
+            QDomElement eachClient = doc.createElement("client");
+            eachClient.setAttribute("address", each.address);
+            eachClient.setAttribute("port", each.port);
+            eachClient.setAttribute("datetime", each.datetime.toString(::dateTimeFormat()));
+            clients.appendChild(eachClient);
+        }
+    }
+    if (m_backwardPort > 0)
+    {
+        QDomElement options = doc.createElement("options");
+        options.setAttribute("backward_port", m_backwardPort);
+        root.appendChild(options);
     }
 
-    return result;
+    return doc.toByteArray();
 }
 
 Message Message::parse(const QByteArray& raw, bool *ok)
 {
-    // TODO
-
     if (ok != nullptr)
     {
         *ok = false;
     }
 
     Message result;
+
+    QDomDocument doc;
+    QString errorMessage;
+    int errorLine = 0,
+        errorColumn = 0;
+    if (doc.setContent(raw, &errorMessage, &errorLine, &errorColumn))
     {
-        QDataStream input(raw);
-        quint8 type = 0;
-        input >> type;
-        result.setType(static_cast<Type>(type));
-        input >> result.m_backwardPort;
-        quint16 bodySize = 0;
-        input >> bodySize;
-        result.m_body.resize(bodySize);
-        input.readRawData(result.m_body.data(), bodySize);
+        QDomElement root = doc.documentElement();
+        QDomNodeList messageChildren = root.elementsByTagName("message");
+        for (int i = 0, isz = messageChildren.size(); i < isz; ++i)
+        {
+            if (!messageChildren.item(i).isElement())
+            {
+                continue;
+            }
+
+            QDomElement el = messageChildren.item(i).toElement();
+            if (el.hasAttribute("type"))
+            {
+                result.m_type = typeFromString(el.attribute("type"));
+            }
+
+            if (!el.hasChildNodes())
+            {
+                continue;
+            }
+            QDomNodeList clientsChildren = el.elementsByTagName("clients");
+            for (int j = 0, jsz = clientsChildren.size(); j < jsz; ++j)
+            {
+                if (!clientsChildren.item(j).isElement())
+                {
+                    continue;
+                }
+                QDomNodeList clientChildren = clientsChildren.item(j).toElement().elementsByTagName("client");
+                for (int k = 0, ksz = clientChildren.size(); k < ksz; ++k)
+                {
+                    if (!clientChildren.item(k).isElement())
+                    {
+                        continue;
+                    }
+                    QDomElement client = clientChildren.item(k).toElement();
+                    if (   client.hasAttribute("address")
+                        && client.hasAttribute("port")
+                        && client.hasAttribute("datetime"))
+                    {
+                        result.addClientInfo(ClientInfo(client.attribute("address"),
+                                                        client.attribute("port").toUInt(),
+                                                        QDateTime::fromString(client.attribute("datetime"), ::dateTimeFormat())));
+                    }
+                }
+            }
+        }
+        QDomNodeList optionsChildren = root.elementsByTagName("options");
+        for (int i = 0, sz = optionsChildren.size(); i < sz; ++i)
+        {
+            if (!optionsChildren.item(i).isElement())
+            {
+                continue;
+            }
+            QDomElement el = optionsChildren.item(i).toElement();
+            if (el.hasAttribute("backward_port"))
+            {
+                result.m_backwardPort = el.attribute("backward_port").toUInt();
+            }
+        }
+    }
+    else
+    {
+        qWarning() << qApp->tr("Message parsing error: %1 in line %2, column %3")
+                      .arg(errorMessage)
+                      .arg(errorLine)
+                      .arg(errorColumn);
     }
 
     if (ok != nullptr)
@@ -95,6 +231,27 @@ Message Message::parse(const QByteArray& raw, bool *ok)
     }
 
     return result;
+}
+
+QString Message::typeToString(Type type)
+{
+    if (::messageTypes().contains(type))
+    {
+        return ::messageTypes()[type];
+    }
+    return ::messageTypes()[Message::Type::Unknown];
+}
+
+Message::Type Message::typeFromString(const QString& type)
+{
+    auto founded = std::find_if(::messageTypes().cbegin(),
+                                ::messageTypes().cend(),
+                                [&type](const QString& each)
+                                {
+                                    return type == each;
+                                });
+    return (founded != ::messageTypes().cend() ? founded.key()
+                                               : Message::Type::Unknown);
 }
 
 QDataStream& operator<< (QDataStream& to, const Message& from)

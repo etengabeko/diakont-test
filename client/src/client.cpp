@@ -251,8 +251,8 @@ void Client::tryProcessResponse()
         m_receivedBytes = m_receivedBytes.right(m_receivedBytes.size() - sizeof(expectedSize) - expectedSize);
 
         // TODO
-        qDebug().noquote() << tr("Received message type=%1").arg(static_cast<quint8>(response.type()));
-
+        qDebug().noquote() << tr("Received message:\n%1")
+                              .arg(QString::fromUtf8(response.serialize()));
         tryProcessResponse();
     }
 }

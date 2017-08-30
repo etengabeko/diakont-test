@@ -3,6 +3,7 @@ PROJECT = serialize-test
 TARGET = $$PROJECT
 
 QT += core \
+      xml \
       testlib
 QT -= gui
 
