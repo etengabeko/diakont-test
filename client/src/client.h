@@ -18,6 +18,11 @@ class ClientWidget;
 namespace Netcom
 {
 
+/**
+ * @class Client
+ * @brief Определяет класс клиента для подключения к серверу
+ *        и отображения актуальной информации обо всех подключенных к серверу клиентах.
+ */
 class Client : public QWidget
 {
     Q_OBJECT
@@ -54,11 +59,11 @@ private:
 private:
     Ui::ClientWidget* m_ui;
 
-    QAbstractSocket* m_socket = nullptr;
-    quint16 m_incomingPort = 0;
-    QByteArray m_receivedBytes;
+    QTimer* m_timer;                     //!< таймер для периодической отправки запросов на сервер.
 
-    QTimer* m_timer = nullptr;
+    QAbstractSocket* m_socket = nullptr; //!< сокет, обеспечивающий связь с сервером.
+    quint16 m_incomingPort = 0;          //!< порт, на котором ожидается ответ от сервера.
+    QByteArray m_receivedBytes;          //!< буфер для принимаемой от сервера информации.
 
 };
 
